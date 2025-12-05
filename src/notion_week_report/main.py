@@ -1,0 +1,160 @@
+"""周报生成工具主入口"""
+
+import argparse
+import sys
+from pathlib import Path
+
+
+def main():
+    """主入口函数"""
+    parser = argparse.ArgumentParser(
+        description="自动周报生成工具 - 从 Notion 任务跟踪器自动生成周报",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  # 手动触发生成周报
+  uv run python -m notion_week_report.main --run
+
+  # 使用指定配置文件
+  uv run python -m notion_week_report.main --run --config /path/to/config.yaml
+
+  # 启动定时任务调度器
+  uv run python -m notion_week_report.main --schedule
+
+  # 预览本周任务（不生成周报）
+  uv run python -m notion_week_report.main --preview
+        """,
+    )
+
+    parser.add_argument(
+        "--config", "-c",
+        type=str,
+        default=None,
+        help="配置文件路径 (默认: config.yaml)",
+    )
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        "--run", "-r",
+        action="store_true",
+        help="立即运行，手动触发生成周报",
+    )
+    group.add_argument(
+        "--schedule", "-s",
+        action="store_true",
+        help="启动定时任务调度器",
+    )
+    group.add_argument(
+        "--preview", "-p",
+        action="store_true",
+        help="预览本周任务（不生成周报）",
+    )
+
+    args = parser.parse_args()
+
+    # 转换配置路径
+    config_path = Path(args.config) if args.config else None
+
+    try:
+        if args.run:
+            run_now(config_path)
+        elif args.schedule:
+            run_scheduler(config_path)
+        elif args.preview:
+            preview_tasks(config_path)
+    except KeyboardInterrupt:
+        print("\n\n👋 已取消")
+        sys.exit(0)
+    except FileNotFoundError as e:
+        print(f"\n❌ 配置文件错误: {e}")
+        print("\n💡 提示: 请复制 config.example.yaml 为 config.yaml 并填入你的配置")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n❌ 错误: {e}")
+        sys.exit(1)
+
+
+def run_now(config_path: Path | None = None):
+    """立即生成周报"""
+    from .report_generator import run_report_generation
+
+    print("=" * 50)
+    print("📝 手动触发周报生成")
+    print("=" * 50 + "\n")
+
+    result = run_report_generation(config_path)
+
+    print("\n" + "=" * 50)
+    print("✅ 周报生成完成!")
+    print("=" * 50)
+    print(f"\n📌 标题: {result['title']}")
+    print(f"📊 任务数: {result['task_count']}")
+    print(f"🔗 链接: {result['url']}")
+    print("\n📄 周报内容预览:")
+    print("-" * 50)
+    print(result['content'])
+
+
+def run_scheduler(config_path: Path | None = None):
+    """启动定时调度器"""
+    from .scheduler import start_scheduler
+
+    print("=" * 50)
+    print("📅 启动周报定时调度器")
+    print("=" * 50 + "\n")
+
+    start_scheduler(config_path)
+
+
+def preview_tasks(config_path: Path | None = None):
+    """预览本周任务"""
+    from .config import get_settings
+    from .notion_client import NotionService
+
+    print("=" * 50)
+    print("👀 预览本周任务")
+    print("=" * 50 + "\n")
+
+    settings = get_settings(config_path)
+    notion_service = NotionService(settings)
+
+    week_start, week_end = notion_service.get_week_range()
+    print(f"📅 周期: {week_start.strftime('%Y-%m-%d')} 至 {week_end.strftime('%Y-%m-%d')}\n")
+
+    tasks = notion_service.get_weekly_tasks()
+
+    if not tasks:
+        print("📭 本周暂无相关任务记录")
+        return
+
+    print(f"📋 找到 {len(tasks)} 个任务:\n")
+
+    # 按状态分组显示
+    completed = [t for t in tasks if t.status == "已完成"]
+    in_progress = [t for t in tasks if t.status == "进行中"]
+
+    if completed:
+        print("✅ 已完成:")
+        for task in completed:
+            print(f"   • {task.name}")
+            if task.description:
+                print(f"     描述: {task.description}")
+            if task.task_type:
+                print(f"     类型: {', '.join(task.task_type)}")
+            print()
+
+    if in_progress:
+        print("🔄 进行中:")
+        for task in in_progress:
+            print(f"   • {task.name}")
+            if task.description:
+                print(f"     描述: {task.description}")
+            if task.task_type:
+                print(f"     类型: {', '.join(task.task_type)}")
+            if task.due_date:
+                print(f"     截止: {task.due_date}")
+            print()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,26 @@
+# Notion 自动周报生成工具 Docker Compose 配置
+version: "3.8"
+
+services:
+  notion-week-report:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: notion-week-report
+    restart: unless-stopped
+    volumes:
+      # 挂载配置文件
+      - ./config:/app/config:ro
+    # 默认启动定时调度器
+    # 如需手动运行，可以使用:
+    # docker compose run --rm notion-week-report --run --config /app/config/config.yaml
+    command: ["--schedule", "--config", "/app/config/config.yaml"]
+    # 时区设置（确保定时任务按正确时间执行）
+    environment:
+      - TZ=Asia/Shanghai
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+

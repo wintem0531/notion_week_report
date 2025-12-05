@@ -1,0 +1,43 @@
+# Notion 自动周报生成工具 - 配置文件
+# 复制此文件为 config.yaml 并填入你的配置
+
+# Notion 配置
+notion:
+  # Notion Integration Token
+  # 从 https://www.notion.so/my-integrations 获取
+  token: "secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+  # 任务跟踪器数据库 ID（已预填充默认值）
+  task_tracker_database_id: "2b736dfe-5c6e-80e9-8b29-000b666d8ece"
+
+  # 周报数据库 ID（已预填充默认值）
+  weekly_report_database_id: "2c036dfe-5c6e-8048-9650-000bb520be4e"
+
+# DeepSeek 配置
+deepseek:
+  # DeepSeek API Key
+  # 从 https://platform.deepseek.com/ 获取
+  api_key: "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+  # DeepSeek API 地址（可选，使用默认值即可）
+  base_url: "https://api.deepseek.com"
+
+  # 使用的模型（可选）
+  model: "deepseek-chat"
+
+# 定时任务配置（可选）
+schedule:
+  # 执行日期: monday/tuesday/wednesday/thursday/friday/saturday/sunday
+  day: "friday"
+
+  # 执行时间 (24小时制 HH:MM)
+  time: "16:30"
+
+# 周报生成配置（可选）
+report:
+  # 是否包含进行中的任务
+  include_in_progress: true
+
+  # 是否包含已完成的任务
+  include_completed: true
+
