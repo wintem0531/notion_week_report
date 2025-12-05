@@ -131,6 +131,8 @@ def _print_task_tree(task: Task, indent: int = 0):
         print(f"{detail_prefix}类型: {', '.join(task.task_type)}")
     if task.due_date:
         print(f"{detail_prefix}截止: {task.due_date}")
+    if task.git_repo_url:
+        print(f"{detail_prefix}Git: {task.git_repo_url}")
 
     # 递归打印子任务
     for child in task.children:

@@ -1,10 +1,12 @@
 """周报生成器模块"""
 
+from datetime import datetime
 from pathlib import Path
 
 from .config import Settings, get_settings
 from .notion_client import NotionService, Task
 from .deepseek_client import DeepSeekService
+from .github_client import GitHubService
 
 
 def _count_all_tasks(tasks: list[Task]) -> tuple[int, int, int]:
@@ -44,6 +46,18 @@ def _print_task_tree(task: Task, indent: int = 0):
     else:
         print(f"{prefix}{status_emoji} {task.name} [{task.status}]")
 
+    # 打印 Git 仓库和提交信息
+    if task.git_repo_url:
+        git_prefix = prefix + "   "
+        print(f"{git_prefix}🔗 Git: {task.git_repo_url}")
+        if task.git_commits:
+            print(f"{git_prefix}📝 本周 {len(task.git_commits)} 条提交:")
+            for commit in task.git_commits[:5]:  # 预览最多显示 5 条
+                msg = commit.message[:40] + "..." if len(commit.message) > 40 else commit.message
+                print(f"{git_prefix}   · {commit.sha}: {msg}")
+            if len(task.git_commits) > 5:
+                print(f"{git_prefix}   ... 还有 {len(task.git_commits) - 5} 条提交")
+
     # 递归打印子任务
     for child in task.children:
         _print_task_tree(child, indent + 1)
@@ -60,6 +74,47 @@ class WeeklyReportGenerator:
         self.settings = settings
         self.notion_service = NotionService(self.settings)
         self.deepseek_service = DeepSeekService(self.settings)
+        # 初始化 GitHub 服务（如果启用）
+        self.github_service = None
+        if self.settings.github_enabled:
+            self.github_service = GitHubService(token=self.settings.github_token)
+
+    def _fetch_git_commits_for_tasks(
+        self,
+        tasks: list[Task],
+        week_start: datetime,
+        week_end: datetime,
+    ) -> None:
+        """为任务列表获取 Git 提交历史（递归处理子任务）"""
+        if not self.github_service:
+            return
+
+        for task in tasks:
+            if task.git_repo_url:
+                commits = self.github_service.get_weekly_commits(
+                    repo_url=task.git_repo_url,
+                    week_start=week_start,
+                    week_end=week_end,
+                )
+                # 将 GitCommit 转换为 notion_client 中的 GitCommit 模型
+                from .notion_client import GitCommit as TaskGitCommit
+
+                task.git_commits = [
+                    TaskGitCommit(
+                        sha=c.sha,
+                        message=c.message,
+                        author=c.author,
+                        date=c.date,
+                        url=c.url,
+                    )
+                    for c in commits
+                ]
+                if commits:
+                    print(f"   📦 {task.name}: 获取到 {len(commits)} 条提交")
+
+            # 递归处理子任务
+            if task.children:
+                self._fetch_git_commits_for_tasks(task.children, week_start, week_end)
 
     def generate_and_publish(self) -> dict:
         """生成并发布周报"""
@@ -83,12 +138,17 @@ class WeeklyReportGenerator:
             print(f"   - 已完成: {completed_count} 个")
             print(f"   - 进行中: {in_progress_count} 个")
 
+            # 3. 获取 Git 提交历史（如果启用）
+            if self.github_service:
+                print("\n🔍 正在获取 Git 提交历史...")
+                self._fetch_git_commits_for_tasks(tasks, week_start, week_end)
+
             # 打印任务详情（带层级）
             print("\n📝 任务列表:")
             for task in tasks:
                 _print_task_tree(task)
 
-        # 3. 使用 DeepSeek 生成周报内容
+        # 4. 使用 DeepSeek 生成周报内容
         print("\n🤖 正在使用 DeepSeek 生成周报...")
         report_content = self.deepseek_service.generate_weekly_report(
             tasks=tasks,
@@ -97,10 +157,10 @@ class WeeklyReportGenerator:
         )
         print("   周报内容生成完成")
 
-        # 4. 生成周报标题
+        # 5. 生成周报标题
         report_title = f"周报 {week_start_str} ~ {week_end_str}"
 
-        # 5. 发布到 Notion
+        # 6. 发布到 Notion
         print("\n📤 正在发布到 Notion...")
         result = self.notion_service.create_weekly_report(
             title=report_title,

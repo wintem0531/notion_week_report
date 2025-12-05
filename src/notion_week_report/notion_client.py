@@ -9,6 +9,16 @@ from pydantic import BaseModel, Field
 from .config import Settings
 
 
+class GitCommit(BaseModel):
+    """Git 提交数据模型（从 github_client 导入时使用）"""
+
+    sha: str = Field(description="提交 SHA")
+    message: str = Field(description="提交信息")
+    author: str = Field(description="提交作者")
+    date: str = Field(description="提交日期")
+    url: str = Field(description="提交链接")
+
+
 class Task(BaseModel):
     """任务数据模型"""
 
@@ -28,6 +38,9 @@ class Task(BaseModel):
     sub_task_ids: list[str] = Field(default_factory=list)
     # 子任务列表（构建层级时填充）
     children: list["Task"] = Field(default_factory=list)
+    # Git 仓库相关
+    git_repo_url: str | None = None
+    git_commits: list[GitCommit] = Field(default_factory=list)
 
 
 class NotionService:
@@ -132,6 +145,12 @@ class NotionService:
         sub_prop = properties.get("子级 任务", {})
         sub_task_ids = self._extract_relation_ids(sub_prop)
 
+        # 提取 Git 仓库 URL
+        git_prop = properties.get("Git仓库", {})
+        git_repo_url = None
+        if git_prop.get("type") == "url":
+            git_repo_url = git_prop.get("url")
+
         return Task(
             id=page.get("id", ""),
             name=name,
@@ -144,6 +163,7 @@ class NotionService:
             last_edited_time=last_edited_time,
             parent_task_ids=parent_task_ids,
             sub_task_ids=sub_task_ids,
+            git_repo_url=git_repo_url,
         )
 
     def _get_page_title(self, page_id: str) -> str | None:

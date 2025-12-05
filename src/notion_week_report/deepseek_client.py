@@ -69,7 +69,7 @@ class DeepSeekService:
         return "\n".join(lines)
 
     def _format_task_group(self, tasks: list[Task], indent: int = 0) -> list[str]:
-        """格式化任务组（递归处理子任务）"""
+        """格式化任务组（递归处理子任务，包含 Git 提交信息）"""
         lines = []
         prefix = "  " * indent
 
@@ -98,6 +98,19 @@ class DeepSeekService:
                 task_info += f" [{'; '.join(meta_parts)}]"
 
             lines.append(task_info)
+
+            # 添加 Git 提交信息（如果有）
+            if task.git_commits:
+                commit_prefix = "  " * (indent + 1)
+                lines.append(f"{commit_prefix}[本周 Git 提交记录]:")
+                for commit in task.git_commits[:10]:  # 最多显示 10 条
+                    # 截断过长的提交信息
+                    msg = (
+                        commit.message[:60] + "..."
+                        if len(commit.message) > 60
+                        else commit.message
+                    )
+                    lines.append(f"{commit_prefix}  · {commit.sha}: {msg}")
 
             # 递归处理子任务
             if task.children:

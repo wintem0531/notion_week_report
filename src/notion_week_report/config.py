@@ -22,6 +22,7 @@ DEFAULT_SYSTEM_PROMPT = """你是一个专业的周报撰写助手。你的任�
 6. 输出格式为 Markdown，包含适当的标题和列表
 7. 总字数控制在 300-500 字之间
 8. 注意任务之间的层级关系，子任务应该归类到对应的父任务下
+9. 如果任务包含 Git 提交记录，根据提交内容理解实际完成的工作，并整合到周报中
 
 输出格式示例：
 ## 本周工作总结
@@ -101,6 +102,19 @@ class DeepSeekConfig(BaseModel):
     )
 
 
+class GitHubConfig(BaseModel):
+    """GitHub 配置"""
+
+    token: str | None = Field(
+        default=None,
+        description="GitHub Personal Access Token（可选，用于提高 API 限制）",
+    )
+    enabled: bool = Field(
+        default=True,
+        description="是否启用 Git 提交历史获取",
+    )
+
+
 class ScheduleConfig(BaseModel):
     """定时任务配置"""
 
@@ -135,6 +149,7 @@ class Settings(BaseModel):
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     report: ReportConfig = Field(default_factory=ReportConfig)
     prompt: PromptConfig = Field(default_factory=PromptConfig)
+    github: GitHubConfig = Field(default_factory=GitHubConfig)
 
     # 兼容旧的属性访问方式
     @property
@@ -193,6 +208,15 @@ class Settings(BaseModel):
     @property
     def prompt_max_tokens(self) -> int:
         return self.prompt.max_tokens
+
+    # GitHub 相关属性
+    @property
+    def github_token(self) -> str | None:
+        return self.github.token
+
+    @property
+    def github_enabled(self) -> bool:
+        return self.github.enabled
 
 
 def load_yaml_config(config_path: Path | str) -> dict[str, Any]:

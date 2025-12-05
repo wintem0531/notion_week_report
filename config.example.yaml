@@ -41,6 +41,18 @@ report:
   # 是否包含已完成的任务
   include_completed: true
 
+# GitHub 配置（可选）
+github:
+  # 是否启用 Git 提交历史获取
+  # 如果任务中有 Git 仓库链接，会自动获取本周的提交记录
+  enabled: true
+
+  # GitHub Personal Access Token（可选，用于提高 API 限制）
+  # 未配置时使用匿名访问，每小时限制 60 次请求
+  # 配置后每小时限制 5000 次请求
+  # 从 https://github.com/settings/tokens 获取，需要 repo 权限
+  token: null  # 或填入 "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
 # AI 提示词配置（可选，可自定义周报风格）
 prompt:
   # 系统提示词 - 定义 AI 的角色和输出格式
@@ -57,6 +69,7 @@ prompt:
     6. 输出格式为 Markdown，包含适当的标题和列表
     7. 总字数控制在 300-500 字之间
     8. 注意任务之间的层级关系，子任务应该归类到对应的父任务下
+    9. 如果任务包含 Git 提交记录，根据提交内容理解实际完成的工作，并整合到周报中
 
     输出格式示例：
     ## 本周工作总结
