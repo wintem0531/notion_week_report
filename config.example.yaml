@@ -7,11 +7,11 @@ notion:
   # 从 https://www.notion.so/my-integrations 获取
   token: "secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
-  # 任务跟踪器数据库 ID（已预填充默认值）
+  # 任务跟踪器数据库 ID（数据源 ID，用于查询）
   task_tracker_database_id: "2b736dfe-5c6e-80e9-8b29-000b666d8ece"
 
-  # 周报数据库 ID（已预填充默认值）
-  weekly_report_database_id: "2c036dfe-5c6e-8048-9650-000bb520be4e"
+  # 周报数据库 ID（数据库 URL 中的 ID，用于创建页面）
+  weekly_report_database_id: "2c036dfe-5c6e-8091-b837-c1c46933679d"
 
 # DeepSeek 配置
 deepseek:
@@ -41,3 +41,55 @@ report:
   # 是否包含已完成的任务
   include_completed: true
 
+# AI 提示词配置（可选，可自定义周报风格）
+prompt:
+  # 系统提示词 - 定义 AI 的角色和输出格式
+  # 使用 | 保持多行格式
+  system_prompt: |
+    你是一个专业的周报撰写助手。你的任务是根据用户提供的任务列表，生成一份简洁、专业、有条理的周报。
+
+    要求：
+    1. 周报应该简洁明了，突出重点工作内容
+    2. 按照工作类型或项目进行分类整理
+    3. 对于已完成的任务，突出成果
+    4. 对于进行中的任务，说明当前进度
+    5. 使用专业但易懂的语言
+    6. 输出格式为 Markdown，包含适当的标题和列表
+    7. 总字数控制在 300-500 字之间
+    8. 注意任务之间的层级关系，子任务应该归类到对应的父任务下
+
+    输出格式示例：
+    ## 本周工作总结
+
+    ### 已完成工作
+    - 工作项1：简要描述成果
+      - 子任务1：具体完成内容
+      - 子任务2：具体完成内容
+    - 工作项2：简要描述成果
+
+    ### 进行中工作
+    - 工作项1：当前进度说明
+      - 子任务1：进度说明
+    - 工作项2：当前进度说明
+
+    ### 下周计划
+    - 基于进行中的工作，简要说明下周重点
+
+    ---
+    *周报生成时间：{生成时间}*
+
+  # 用户提示词模板
+  # 支持变量: {week_start}, {week_end}, {task_descriptions}
+  user_prompt_template: |
+    请根据以下本周（{week_start} 至 {week_end}）的任务列表生成周报：
+
+    {task_descriptions}
+
+    请生成一份专业的周报总结。
+
+  # 生成温度，控制输出的随机性 (0-1)
+  # 越低越稳定，越高越有创意
+  temperature: 0.7
+
+  # 最大生成 token 数
+  max_tokens: 1500

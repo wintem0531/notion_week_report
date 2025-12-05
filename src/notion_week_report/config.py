@@ -10,6 +10,47 @@ from pydantic import BaseModel, Field
 # 默认配置文件路径
 DEFAULT_CONFIG_PATH = Path("config.yaml")
 
+# 默认系统提示词
+DEFAULT_SYSTEM_PROMPT = """你是一个专业的周报撰写助手。你的任务是根据用户提供的任务列表，生成一份简洁、专业、有条理的周报。
+
+要求：
+1. 周报应该简洁明了，突出重点工作内容
+2. 按照工作类型或项目进行分类整理
+3. 对于已完成的任务，突出成果
+4. 对于进行中的任务，说明当前进度
+5. 使用专业但易懂的语言
+6. 输出格式为 Markdown，包含适当的标题和列表
+7. 总字数控制在 300-500 字之间
+8. 注意任务之间的层级关系，子任务应该归类到对应的父任务下
+
+输出格式示例：
+## 本周工作总结
+
+### 已完成工作
+- 工作项1：简要描述成果
+  - 子任务1：具体完成内容
+  - 子任务2：具体完成内容
+- 工作项2：简要描述成果
+
+### 进行中工作
+- 工作项1：当前进度说明
+  - 子任务1：进度说明
+- 工作项2：当前进度说明
+
+### 下周计划
+- 基于进行中的工作，简要说明下周重点
+
+---
+*周报生成时间：{生成时间}*
+"""
+
+# 默认用户提示词模板
+DEFAULT_USER_PROMPT_TEMPLATE = """请根据以下本周（{week_start} 至 {week_end}）的任务列表生成周报：
+
+{task_descriptions}
+
+请生成一份专业的周报总结。"""
+
 
 class NotionConfig(BaseModel):
     """Notion 配置"""
@@ -22,6 +63,27 @@ class NotionConfig(BaseModel):
     weekly_report_database_id: str = Field(
         default="2c036dfe-5c6e-8048-9650-000bb520be4e",
         description="周报数据库 ID",
+    )
+
+
+class PromptConfig(BaseModel):
+    """AI 提示词配置"""
+
+    system_prompt: str = Field(
+        default=DEFAULT_SYSTEM_PROMPT,
+        description="系统提示词，定义 AI 的角色和输出格式",
+    )
+    user_prompt_template: str = Field(
+        default=DEFAULT_USER_PROMPT_TEMPLATE,
+        description="用户提示词模板，支持 {week_start}, {week_end}, {task_descriptions} 变量",
+    )
+    temperature: float = Field(
+        default=0.7,
+        description="生成温度，控制输出的随机性 (0-1)",
+    )
+    max_tokens: int = Field(
+        default=1500,
+        description="最大生成 token 数",
     )
 
 
@@ -72,6 +134,7 @@ class Settings(BaseModel):
     deepseek: DeepSeekConfig
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     report: ReportConfig = Field(default_factory=ReportConfig)
+    prompt: PromptConfig = Field(default_factory=PromptConfig)
 
     # 兼容旧的属性访问方式
     @property
@@ -113,6 +176,23 @@ class Settings(BaseModel):
     @property
     def include_completed(self) -> bool:
         return self.report.include_completed
+
+    # Prompt 相关属性
+    @property
+    def system_prompt(self) -> str:
+        return self.prompt.system_prompt
+
+    @property
+    def user_prompt_template(self) -> str:
+        return self.prompt.user_prompt_template
+
+    @property
+    def prompt_temperature(self) -> float:
+        return self.prompt.temperature
+
+    @property
+    def prompt_max_tokens(self) -> int:
+        return self.prompt.max_tokens
 
 
 def load_yaml_config(config_path: Path | str) -> dict[str, Any]:

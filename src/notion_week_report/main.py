@@ -4,6 +4,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from .notion_client import Task
+
 
 def main():
     """主入口函数"""
@@ -27,7 +29,8 @@ def main():
     )
 
     parser.add_argument(
-        "--config", "-c",
+        "--config",
+        "-c",
         type=str,
         default=None,
         help="配置文件路径 (默认: config.yaml)",
@@ -35,17 +38,20 @@ def main():
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
-        "--run", "-r",
+        "--run",
+        "-r",
         action="store_true",
         help="立即运行，手动触发生成周报",
     )
     group.add_argument(
-        "--schedule", "-s",
+        "--schedule",
+        "-s",
         action="store_true",
         help="启动定时任务调度器",
     )
     group.add_argument(
-        "--preview", "-p",
+        "--preview",
+        "-p",
         action="store_true",
         help="预览本周任务（不生成周报）",
     )
@@ -92,7 +98,7 @@ def run_now(config_path: Path | None = None):
     print(f"🔗 链接: {result['url']}")
     print("\n📄 周报内容预览:")
     print("-" * 50)
-    print(result['content'])
+    print(result["content"])
 
 
 def run_scheduler(config_path: Path | None = None):
@@ -104,6 +110,39 @@ def run_scheduler(config_path: Path | None = None):
     print("=" * 50 + "\n")
 
     start_scheduler(config_path)
+
+
+def _print_task_tree(task: Task, indent: int = 0):
+    """递归打印任务树"""
+    prefix = "   " + "  " * indent
+    status_emoji = "✅" if task.status == "已完成" else "🔄"
+
+    # 打印任务名称
+    if task.parent_task_name and indent == 0:
+        print(f"{prefix}{status_emoji} [{task.parent_task_name}] {task.name}")
+    else:
+        print(f"{prefix}{status_emoji} {task.name}")
+
+    # 打印任务详情
+    detail_prefix = prefix + "   "
+    if task.description:
+        print(f"{detail_prefix}描述: {task.description}")
+    if task.task_type:
+        print(f"{detail_prefix}类型: {', '.join(task.task_type)}")
+    if task.due_date:
+        print(f"{detail_prefix}截止: {task.due_date}")
+
+    # 递归打印子任务
+    for child in task.children:
+        _print_task_tree(child, indent + 1)
+
+
+def _count_all_tasks(tasks: list[Task]) -> int:
+    """递归统计所有任务数量（包括子任务）"""
+    count = len(tasks)
+    for task in tasks:
+        count += _count_all_tasks(task.children)
+    return count
 
 
 def preview_tasks(config_path: Path | None = None):
@@ -119,15 +158,19 @@ def preview_tasks(config_path: Path | None = None):
     notion_service = NotionService(settings)
 
     week_start, week_end = notion_service.get_week_range()
-    print(f"📅 周期: {week_start.strftime('%Y-%m-%d')} 至 {week_end.strftime('%Y-%m-%d')}\n")
+    print(
+        f"📅 周期: {week_start.strftime('%Y-%m-%d')} 至 {week_end.strftime('%Y-%m-%d')}\n"
+    )
 
+    # 获取层级结构的任务
     tasks = notion_service.get_weekly_tasks()
 
     if not tasks:
         print("📭 本周暂无相关任务记录")
         return
 
-    print(f"📋 找到 {len(tasks)} 个任务:\n")
+    total_count = _count_all_tasks(tasks)
+    print(f"📋 找到 {total_count} 个任务（{len(tasks)} 个顶级任务）:\n")
 
     # 按状态分组显示
     completed = [t for t in tasks if t.status == "已完成"]
@@ -136,23 +179,13 @@ def preview_tasks(config_path: Path | None = None):
     if completed:
         print("✅ 已完成:")
         for task in completed:
-            print(f"   • {task.name}")
-            if task.description:
-                print(f"     描述: {task.description}")
-            if task.task_type:
-                print(f"     类型: {', '.join(task.task_type)}")
+            _print_task_tree(task)
             print()
 
     if in_progress:
         print("🔄 进行中:")
         for task in in_progress:
-            print(f"   • {task.name}")
-            if task.description:
-                print(f"     描述: {task.description}")
-            if task.task_type:
-                print(f"     类型: {', '.join(task.task_type)}")
-            if task.due_date:
-                print(f"     截止: {task.due_date}")
+            _print_task_tree(task)
             print()
 
 

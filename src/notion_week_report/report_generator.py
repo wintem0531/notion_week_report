@@ -3,14 +3,58 @@
 from pathlib import Path
 
 from .config import Settings, get_settings
-from .notion_client import NotionService
+from .notion_client import NotionService, Task
 from .deepseek_client import DeepSeekService
+
+
+def _count_all_tasks(tasks: list[Task]) -> tuple[int, int, int]:
+    """递归统计所有任务数量（包括子任务）
+
+    Returns:
+        (总数, 已完成数, 进行中数)
+    """
+    total = 0
+    completed = 0
+    in_progress = 0
+
+    for task in tasks:
+        total += 1
+        if task.status == "已完成":
+            completed += 1
+        elif task.status == "进行中":
+            in_progress += 1
+
+        # 递归统计子任务
+        sub_total, sub_completed, sub_in_progress = _count_all_tasks(task.children)
+        total += sub_total
+        completed += sub_completed
+        in_progress += sub_in_progress
+
+    return total, completed, in_progress
+
+
+def _print_task_tree(task: Task, indent: int = 0):
+    """递归打印任务树"""
+    prefix = "   " + "  " * indent
+    status_emoji = "✅" if task.status == "已完成" else "🔄"
+
+    # 打印任务名称
+    if task.parent_task_name and indent == 0:
+        print(f"{prefix}{status_emoji} [{task.parent_task_name}] {task.name} [{task.status}]")
+    else:
+        print(f"{prefix}{status_emoji} {task.name} [{task.status}]")
+
+    # 递归打印子任务
+    for child in task.children:
+        _print_task_tree(child, indent + 1)
 
 
 class WeeklyReportGenerator:
     """周报生成器"""
 
-    def __init__(self, settings: Settings | None = None, config_path: Path | None = None):
+    def __init__(
+        self, settings: Settings | None = None, config_path: Path | None = None
+    ):
         if settings is None:
             settings = get_settings(config_path)
         self.settings = settings
@@ -27,22 +71,22 @@ class WeeklyReportGenerator:
         week_end_str = week_end.strftime("%Y-%m-%d")
         print(f"📅 周期：{week_start_str} 至 {week_end_str}")
 
-        # 2. 获取本周任务
+        # 2. 获取本周任务（带层级）
         print("📋 正在获取本周任务...")
         tasks = self.notion_service.get_weekly_tasks()
-        print(f"   找到 {len(tasks)} 个相关任务")
+
+        # 统计任务数量
+        total_count, completed_count, in_progress_count = _count_all_tasks(tasks)
+        print(f"   找到 {total_count} 个相关任务（{len(tasks)} 个顶级任务）")
 
         if tasks:
-            completed_count = sum(1 for t in tasks if t.status == "已完成")
-            in_progress_count = sum(1 for t in tasks if t.status == "进行中")
             print(f"   - 已完成: {completed_count} 个")
             print(f"   - 进行中: {in_progress_count} 个")
 
-            # 打印任务详情
+            # 打印任务详情（带层级）
             print("\n📝 任务列表:")
             for task in tasks:
-                status_emoji = "✅" if task.status == "已完成" else "🔄"
-                print(f"   {status_emoji} {task.name} [{task.status}]")
+                _print_task_tree(task)
 
         # 3. 使用 DeepSeek 生成周报内容
         print("\n🤖 正在使用 DeepSeek 生成周报...")
@@ -72,7 +116,7 @@ class WeeklyReportGenerator:
             "title": report_title,
             "page_id": result["id"],
             "url": f"https://notion.so/{result['id'].replace('-', '')}",
-            "task_count": len(tasks),
+            "task_count": total_count,
             "content": report_content,
         }
 

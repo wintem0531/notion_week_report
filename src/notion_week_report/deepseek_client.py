@@ -6,36 +6,6 @@ from .config import Settings
 from .notion_client import Task
 
 
-SYSTEM_PROMPT = """你是一个专业的周报撰写助手。你的任务是根据用户提供的任务列表，生成一份简洁、专业、有条理的周报。
-
-要求：
-1. 周报应该简洁明了，突出重点工作内容
-2. 按照工作类型或项目进行分类整理
-3. 对于已完成的任务，突出成果
-4. 对于进行中的任务，说明当前进度
-5. 使用专业但易懂的语言
-6. 输出格式为 Markdown，包含适当的标题和列表
-7. 总字数控制在 300-500 字之间
-
-输出格式示例：
-## 本周工作总结
-
-### 已完成工作
-- 工作项1：简要描述成果
-- 工作项2：简要描述成果
-
-### 进行中工作
-- 工作项1：当前进度说明
-- 工作项2：当前进度说明
-
-### 下周计划
-- 基于进行中的工作，简要说明下周重点
-
----
-*周报生成时间：{生成时间}*
-"""
-
-
 class DeepSeekService:
     """DeepSeek 服务类"""
 
@@ -45,35 +15,43 @@ class DeepSeekService:
             base_url=settings.deepseek_base_url,
         )
         self.model = settings.deepseek_model
+        self.system_prompt = settings.system_prompt
+        self.user_prompt_template = settings.user_prompt_template
+        self.temperature = settings.prompt_temperature
+        self.max_tokens = settings.prompt_max_tokens
 
-    def generate_weekly_report(self, tasks: list[Task], week_start: str, week_end: str) -> str:
+    def generate_weekly_report(
+        self, tasks: list[Task], week_start: str, week_end: str
+    ) -> str:
         """根据任务列表生成周报"""
         if not tasks:
             return self._generate_empty_report(week_start, week_end)
 
-        # 构建任务描述
+        # 构建任务描述（支持层级）
         task_descriptions = self._format_tasks_for_prompt(tasks)
 
-        user_prompt = f"""请根据以下本周（{week_start} 至 {week_end}）的任务列表生成周报：
-
-{task_descriptions}
-
-请生成一份专业的周报总结。"""
+        # 使用配置的用户提示词模板
+        user_prompt = self.user_prompt_template.format(
+            week_start=week_start,
+            week_end=week_end,
+            task_descriptions=task_descriptions,
+        )
 
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.7,
-            max_tokens=1500,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
         )
 
         return response.choices[0].message.content or ""
 
     def _format_tasks_for_prompt(self, tasks: list[Task]) -> str:
-        """将任务列表格式化为提示词内容"""
+        """将任务列表格式化为提示词内容（支持层级结构）"""
+        # 分离已完成和进行中的任务
         completed_tasks = [t for t in tasks if t.status == "已完成"]
         in_progress_tasks = [t for t in tasks if t.status == "进行中"]
 
@@ -81,32 +59,62 @@ class DeepSeekService:
 
         if completed_tasks:
             lines.append("【已完成的任务】")
-            for task in completed_tasks:
-                task_info = f"- {task.name}"
-                if task.description:
-                    task_info += f"（{task.description}）"
-                if task.task_type:
-                    task_info += f" [类型: {', '.join(task.task_type)}]"
-                if task.priority:
-                    task_info += f" [优先级: {task.priority}]"
-                lines.append(task_info)
+            lines.extend(self._format_task_group(completed_tasks))
             lines.append("")
 
         if in_progress_tasks:
             lines.append("【进行中的任务】")
-            for task in in_progress_tasks:
-                task_info = f"- {task.name}"
-                if task.description:
-                    task_info += f"（{task.description}）"
-                if task.task_type:
-                    task_info += f" [类型: {', '.join(task.task_type)}]"
-                if task.priority:
-                    task_info += f" [优先级: {task.priority}]"
-                if task.due_date:
-                    task_info += f" [截止: {task.due_date}]"
-                lines.append(task_info)
+            lines.extend(self._format_task_group(in_progress_tasks))
 
         return "\n".join(lines)
+
+    def _format_task_group(self, tasks: list[Task], indent: int = 0) -> list[str]:
+        """格式化任务组（递归处理子任务）"""
+        lines = []
+        prefix = "  " * indent
+
+        for task in tasks:
+            # 构建任务基本信息
+            task_info = f"{prefix}- {task.name}"
+
+            # 如果有父任务名称（说明是子任务但父任务不在本组中），添加上下文
+            if task.parent_task_name and indent == 0:
+                task_info = f"{prefix}- [{task.parent_task_name}] {task.name}"
+
+            # 添加描述
+            if task.description:
+                task_info += f"（{task.description}）"
+
+            # 添加元信息
+            meta_parts = []
+            if task.task_type:
+                meta_parts.append(f"类型: {', '.join(task.task_type)}")
+            if task.priority:
+                meta_parts.append(f"优先级: {task.priority}")
+            if task.due_date:
+                meta_parts.append(f"截止: {task.due_date}")
+
+            if meta_parts:
+                task_info += f" [{'; '.join(meta_parts)}]"
+
+            lines.append(task_info)
+
+            # 递归处理子任务
+            if task.children:
+                # 分离子任务的状态
+                completed_children = [c for c in task.children if c.status == "已完成"]
+                in_progress_children = [
+                    c for c in task.children if c.status == "进行中"
+                ]
+
+                # 根据当前任务组的状态决定显示哪些子任务
+                # 已完成的父任务显示所有子任务
+                # 进行中的父任务也显示所有子任务
+                all_children = completed_children + in_progress_children
+                if all_children:
+                    lines.extend(self._format_task_group(all_children, indent + 1))
+
+        return lines
 
     def _generate_empty_report(self, week_start: str, week_end: str) -> str:
         """生成空周报（无任务时）"""
@@ -119,4 +127,3 @@ class DeepSeekService:
 ---
 *周报由系统自动生成*
 """
-
